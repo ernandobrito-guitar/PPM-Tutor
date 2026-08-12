@@ -91,7 +91,7 @@ Regras de Atuação:
 
 # Inicializa o modelo Gemini
 model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-pro",
     system_instruction=system_instruction
 )
 

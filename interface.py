@@ -1,111 +1,92 @@
-import os
-import glob
 import streamlit as st
 import google.generativeai as genai
-from PyPDF2 import PdfReader
+import PyPDF2
+import os
 
-# Configuração da página
-st.set_page_config(page_title="PPM - Professor Pessoal de Música", page_icon="🎸", layout="wide")
+# Configuração da página do Streamlit
+st.set_page_config(
+    page_title="Personal Music Professor",
+    page_icon="🎸",
+    layout="wide"
+)
 
-# Recupera a API Key do Streamlit Secrets ou do menu lateral
-gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
+st.title("🎸 Personal Music Professor")
+st.markdown("Seu tutor de guitarra e teoria musical baseado na sua biblioteca de estudos.")
 
-with st.sidebar:
-    st.header("⚙️ Configurações")
-    if not gemini_api_key:
-        gemini_api_key = st.text_input("Insira sua Gemini API Key:", type="password")
-    else:
-        st.success("🔑 API Key carregada com sucesso!")
-
-    st.markdown("---")
-    st.header("📚 Biblioteca Fixa")
-
-# Função para ler todos os materiais da pasta 'conhecimento'
-def carregar_base_conhecimento():
-    texto_acumulado = ""
-    pasta = "conhecimento"
-    
-    if not os.path.exists(pasta):
-        return texto_acumulado
-
-    # Busca arquivos PDF e TXT na pasta conhecimento
-    arquivos_pdf = glob.glob(os.path.join(pasta, "*.pdf"))
-    arquivos_txt = glob.glob(os.path.join(pasta, "*.txt"))
-    
-    # Processa PDFs
-    for pdf in arquivos_pdf:
-        try:
-            reader = PdfReader(pdf)
-            for page in reader.pages:
-                extraido = page.extract_text()
-                if extraido:
-                    texto_acumulado += f"\n--- Fonte: {os.path.basename(pdf)} ---\n" + extraido
-        except Exception as e:
-            st.sidebar.error(f"Erro ao ler {os.path.basename(pdf)}: {e}")
-
-    # Processa TXTs
-    for txt in arquivos_txt:
-        if os.path.basename(txt) == "LEAME.txt":
-            continue
-        try:
-            with open(txt, "r", encoding="utf-8") as f:
-                texto_acumulado += f"\n--- Fonte: {os.path.basename(txt)} ---\n" + f.read()
-        except Exception as e:
-            st.sidebar.error(f"Erro ao ler {os.path.basename(txt)}: {e}")
-
-    return texto_acumulado
-
-# Título da Aplicação
-st.title("🎸 PPM - Professor Pessoal de Música")
-st.caption("Seu tutor inteligente de teoria, harmonia e prática musical carregado com sua biblioteca personalizada.")
-
-if not gemini_api_key:
-    st.warning("⚠️ Por favor, insira a sua Gemini API Key na barra lateral para ativar o tutor.")
-    st.stop()
-
-# Configura o Gemini
-genai.configure(api_key=gemini_api_key)
-
-# Carrega a base de conhecimento permanente
-base_conhecimento = carregar_base_conhecimento()
-
-if base_conhecimento:
-    st.sidebar.info("✅ Base de conhecimento fixa carregada!")
-else:
-    st.sidebar.warning("ℹ️ Nenhuma apostila encontrada na pasta 'conhecimento'.")
-
-# Prompt de sistema definindo o comportamento do Tutor
-system_instruction = f"""
-Você é o PPM (Professor Pessoal de Música), um tutor especialista, didático e encorajador.
-Sua missão é ensinar teoria musical, harmonia, campo harmônico, escalas (incluindo pentatônica), tríades, acordes e prática de instrumentos.
-
-Regras de Atuação:
-1. Responda de forma clara, bem estruturada e fácil de entender.
-2. Utilize SEMPRE como prioridade máxima a Base de Conhecimento Fixa fornecida abaixo para responder às perguntas sobre acordes, tríades, pentatônicas e teoria.
-3. Se a informação estiver na Base de Conhecimento, explique com base nela. Se não estiver na base, responda usando seu conhecimento musical geral, mantendo a mesma didática.
-
-=== BASE DE CONHECIMENTO FIXA (SEUS MATERIAIS DE ESTUDO) ===
-{base_conhecimento}
-=========================================================
-"""
-
+# 1. Autenticação na API do Gemini
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
-    st.error("Chave 'GEMINI_API_KEY' não encontrada nos st.secrets!")
+    st.error("⚠️ Chave GEMINI_API_KEY não encontrada nos Secrets do Streamlit!")
     st.stop()
 
-# Inicializa o modelo Gemini
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=system_instruction
-)
+# 2. Leitura da Base de Conhecimento (PDFs)
+@st.cache_data
+def carregar_base_conhecimento():
+    texto_acumulado = ""
+    pasta_pdf = "data"  # Nome da pasta onde estão seus PDFs no repositório
+    
+    if os.path.exists(pasta_pdf):
+        for arquivo in os.listdir(pasta_pdf):
+            if arquivo.endswith(".pdf"):
+                caminho_pdf = os.path.join(pasta_pdf, arquivo)
+                try:
+                    with open(caminho_pdf, "rb") as f:
+                        reader = PyPDF2.PdfReader(f)
+                        for pagina in reader.pages:
+                            texto_acumulado += pagina.extract_text() + "\n"
+                except Exception as e:
+                    st.warning(f"Não foi possível ler o arquivo {arquivo}: {e}")
+    return texto_acumulado
 
-# Inicializa ou Reinicia o Chat
+base_conhecimento = carregar_base_conhecimento()
+
+# 3. Prompt do Sistema
+system_instruction = f"""
+Você é o Personal Music Professor (PPM), um tutor especialista em guitarra, violão, tríades, pentatônicas e teoria musical.
+Regras de Atuação:
+1. Responda de forma clara, bem estruturada e fácil de entender.
+2. Utilize SEMPRE como prioridade máxima a Base de Conhecimento Fixa fornecida abaixo para responder às perguntas sobre acordes, tríades, pentatônicas e teoria.
+3. Se a informação estiver na Base de Conhecimento, explique com base nela. Se não estiver, responda usando seu conhecimento musical geral, mantendo a mesma didática.
+
+=== BASE DE CONHECIMENTO FIXA (SEUS MATERIAIS DE ESTUDO) ===
+{base_conhecimento}
+===========================================================
+"""
+
+# 4. Inicialização do Modelo Gemini com Fallback (Tentativas automáticas)
+@st.cache_resource
+def obter_modelo_gemini():
+    # Lista de nomes de modelos suportados em ordem de preferência
+    modelos_para_testar = [
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-1.0-pro",
+        "models/gemini-1.5-flash"
+    ]
+    
+    for nome_modelo in modelos_para_testar:
+        try:
+            m = genai.GenerativeModel(
+                model_name=nome_modelo,
+                system_instruction=system_instruction
+            )
+            # Testa uma chamada simples rápida para ver se o modelo realmente responde
+            m.generate_content("teste")
+            return m
+        except Exception:
+            continue
+            
+    st.error("❌ Não foi possível conectar a nenhum modelo Gemini disponível. Verifique se sua chave no AI Studio tem permissões ativas.")
+    st.stop()
+
+model = obter_modelo_gemini()
+
+# 5. Gerenciamento da Sessão do Chat
 if "chat" not in st.session_state or st.sidebar.button("🔄 Reiniciar Conversa"):
     st.session_state.chat = model.start_chat(history=[])
 
-# Exibe mensagens anteriores do chat
+# 6. Exibição das mensagens do histórico
 for message in st.session_state.chat.history:
     role = "user" if message.role == "user" else "assistant"
     with st.chat_message(role):
@@ -114,14 +95,16 @@ for message in st.session_state.chat.history:
 # Mensagem de boas-vindas inicial se o chat estiver vazio
 if len(st.session_state.chat.history) == 0:
     with st.chat_message("assistant"):
-        st.write("Olá! Sou seu Professor Pessoal de Música. Já li sua biblioteca de estudos e estou pronto. O que vamos estudar hoje? (Acordes, tríades, pentatônicas, campo harmônico...)")
+        st.write("Olá! Sou seu Professor Pessoal de Música. Já li sua biblioteca de estudos e estou pronto. O que vamos estudar hoje?")
 
-# Campo de entrada do usuário
-if user_input := st.chat_input("Digite sua dúvida musical aqui..."):
+# 7. Entrada de Pergunta do Usuário
+if user_input := st.chat_input("Pergunte algo sobre teoria, acordes ou suas apostilas..."):
     with st.chat_message("user"):
         st.write(user_input)
-
-    with st.chat_message("assistant"):
-        with st.spinner("Analisando sua dúvida e consultando sua biblioteca..."):
-            response = st.session_state.chat.send_message(user_input)
+    
+    try:
+        response = st.session_state.chat.send_message(user_input)
+        with st.chat_message("assistant"):
             st.write(response.text)
+    except Exception as e:
+        st.error(f"Erro ao processar resposta da API: {e}")

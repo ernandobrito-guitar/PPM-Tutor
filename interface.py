@@ -7,14 +7,14 @@ st.set_page_config(page_title="Personal Music Professor", page_icon="🎸")
 st.title("🎸 Personal Music Professor")
 st.markdown("Seu tutor de guitarra e teoria musical baseado na sua biblioteca de estudos.")
 
-# 1. Configuração da API Key
+# 1. Autenticação na API
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
     st.error("Chave GEMINI_API_KEY não encontrada nos Secrets!")
     st.stop()
 
-# 2. Leitura da Base de Conhecimento (PDFs)
+# 2. Leitura dos PDFs da pasta 'data'
 @st.cache_data
 def carregar_base():
     texto = ""
@@ -32,50 +32,43 @@ def carregar_base():
 
 base_conhecimento = carregar_base()
 
-system_instruction = f"""
-Você é o Personal Music Professor (PPM), especialista em guitarra e teoria musical.
-Responda sempre com clareza e priorize as informações da base de conhecimento abaixo:
+# 3. Inicialização do Modelo Gemini Pro (Compatível universalmente)
+model = genai.GenerativeModel("gemini-pro")
 
-=== BASE DE CONHECIMENTO ===
-{base_conhecimento}
-"""
-
-# 3. Modelo do Gemini
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=system_instruction
-)
-
-# 4. Inicializa o Histórico do Chat na Memória
+# 4. Histórico da conversa
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Exibe histórico de mensagens da tela
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.write(message["content"])
 
-# Mensagem inicial se a tela estiver limpa
 if len(st.session_state.messages) == 0:
     with st.chat_message("assistant"):
         st.write("Olá! Sou seu Professor Pessoal de Música. Já li suas apostilas e estou pronto. O que vamos estudar hoje?")
 
-# 5. Processa novas mensagens do usuário
+# 5. Envio de Pergunta
 if user_input := st.chat_input("Pergunte sobre acordes, tríades, pentatônicas..."):
-    # Mostra mensagem do usuário
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.write(user_input)
     
-    # Gera resposta direta do Gemini
+    # Monta o prompt injetando a biblioteca de PDFs
+    prompt_completo = f"""
+Você é o Personal Music Professor (PPM), especialista em guitarra e teoria musical.
+Use a base de conhecimento abaixo para responder à pergunta do aluno.
+
+=== BASE DE CONHECIMENTO (APOSTILAS DO ALUNO) ===
+{base_conhecimento}
+=================================================
+
+Pergunta do aluno: {user_input}
+"""
     try:
-        # Prepara o histórico para o modelo
-        prompt_completo = user_input
-        response = model.generate_content(user_input)
-        
+        response = model.generate_content(prompt_completo)
         with st.chat_message("assistant"):
             st.write(response.text)
         
         st.session_state.messages.append({"role": "assistant", "content": response.text})
     except Exception as e:
-        st.error(f"Erro ao obter resposta da API: {e}")
+        st.error(f"Erro na API: {e}")

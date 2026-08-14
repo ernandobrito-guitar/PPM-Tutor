@@ -89,12 +89,18 @@ Regras de Atuação:
 =========================================================
 """
 
-# Inicializa o modelo Gemini
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
-    system_instruction=system_instruction
-)
-
+# Inicializa o modelo Gemini com fallback de segurança
+try:
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        system_instruction=system_instruction
+    )
+except Exception:
+    # Se falhar, tenta o modelo alternativo padrão
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-pro",
+        system_instruction=system_instruction
+    )
 # Histórico de Chat
 if "chat" not in st.session_state:
     st.session_state.chat = model.start_chat(history=[])
